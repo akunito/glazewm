@@ -31,7 +31,11 @@ function SignFiles() {
   )
 
   foreach ($secret in $secrets) {
-    if (!(Test-Path "env:$secret")) {
+    # A workflow that references an undefined secret still exports the variable
+    # with an empty value, so `Test-Path env:` alone is not enough.
+    $value = (Get-Item "env:$secret" -ErrorAction SilentlyContinue).Value
+
+    if ([string]::IsNullOrWhiteSpace($value)) {
       Write-Output "Skipping signing due to missing secret '$secret'."
       Return
     }
