@@ -157,7 +157,15 @@ fn windows_to_bring_to_front(
               WindowState::Floating(_) | WindowState::Tiling
             );
 
+            // Floating windows keep the OS z-order: only the focused one is
+            // raised, the rest stay where the user left them. Re-stacking all
+            // of them by focus history moved windows nobody clicked.
+            let keep_os_z_order =
+              matches!(window.state(), WindowState::Floating(_))
+                && window.id() != focused_descendant.id();
+
             is_floating_or_tiling
+              && !keep_os_z_order
               && window.state().is_same_state(&focused_descendant.state())
           })
           .collect(),
