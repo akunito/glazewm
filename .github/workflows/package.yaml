@@ -18,7 +18,7 @@ jobs:
   build:
     uses: ./.github/workflows/build.yaml
     with:
-      enable_ui_access: true
+      enable_ui_access: false
       version_number: ${{ inputs.version_number }}
 
   package-windows:
