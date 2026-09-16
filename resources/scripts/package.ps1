@@ -53,7 +53,15 @@ function DownloadZebarInstallers() {
   Write-Output "Downloading latest Zebar MSI's"
 
   $latestRelease = 'https://api.github.com/repos/glzr-io/zebar/releases/latest'
-  $latestInstallers = Invoke-RestMethod $latestRelease | % assets | ? name -like "*.msi"
+
+  # Authenticate the API call when a token is available. Anonymous requests
+  # share the runner's IP quota and routinely hit the rate limit.
+  $headers = @{}
+  if ($ENV:GH_TOKEN) {
+    $headers["Authorization"] = "Bearer $ENV:GH_TOKEN"
+  }
+
+  $latestInstallers = Invoke-RestMethod $latestRelease -Headers $headers | % assets | ? name -like "*.msi"
 
   $latestInstallers | ForEach-Object {
     $outFile = Join-Path "out" $_.name
