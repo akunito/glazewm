@@ -405,74 +405,100 @@ fn reposition_window(
         SWP_NOCOPYBITS, SWP_NOSENDCHANGING, WS_MAXIMIZEBOX,
       };
 
-      // Restore window if it's minimized/maximized and shouldn't be. This
-      // is needed to be able to move and resize it.
-      let should_restore = match &window.state() {
-        // Need to restore window if transitioning from maximized
-        // fullscreen to non-maximized fullscreen.
-        WindowState::Fullscreen(fullscreen) => {
-          !fullscreen.maximized && window.native().is_maximized()?
-        }
-        // No need to restore window if it'll be minimized. Transitioning
-        // from maximized to minimized works without having to
-        // restore.
-        WindowState::Minimized => false,
-        _ => {
-          window.native().is_minimized()?
-            || window.native().is_maximized()?
-        }
-      };
-
-      if should_restore {
-        // Restoring to position has the same effect as `ShowWindow` with
-        // `SW_RESTORE`, but doesn't cause a flicker.
-        window.native().restore(Some(&rect))?;
-      }
-
-      let mut swp_flags = SWP_NOACTIVATE
-        | SWP_NOCOPYBITS
-        | SWP_NOSENDCHANGING
-        | SWP_ASYNCWINDOWPOS;
-
-      match &window.state() {
-        WindowState::Minimized => {
-          if !window.native().is_minimized()? {
+      // Position a window only while it's visible. A window that is being
+      // hidden doesn't need to be moved, and skipping the move means a
+      // window that can't be repositioned at all (e.g. an elevated window,
+      // where `SetWindowPos` fails with access denied) still gets hidden.
+      let position_res = (|| -> anyhow::Result<()> {
+        if !is_visible {
+          // A window that's being hidden still needs to be minimized if
+          // that's its state, but nothing else.
+          if window.state() == WindowState::Minimized
+            && !window.native().is_minimized()?
+          {
             window.native().minimize()?;
           }
+
+          return Ok(());
         }
-        WindowState::Fullscreen(fullscreen)
-          if fullscreen.maximized
-            && window.native().has_window_style(WS_MAXIMIZEBOX) =>
-        {
-          if !window.native().is_maximized()? {
-            window.native().maximize()?;
+
+        // Restore window if it's minimized/maximized and shouldn't be.
+        // This is needed to be able to move and resize it.
+        let should_restore = match &window.state() {
+          // Need to restore window if transitioning from maximized
+          // fullscreen to non-maximized fullscreen.
+          WindowState::Fullscreen(fullscreen) => {
+            !fullscreen.maximized && window.native().is_maximized()?
           }
+          // No need to restore window if it'll be minimized. Transitioning
+          // from maximized to minimized works without having to
+          // restore.
+          WindowState::Minimized => false,
+          _ => {
+            window.native().is_minimized()?
+              || window.native().is_maximized()?
+          }
+        };
 
-          window.native().set_window_pos(z_order, &rect, swp_flags)?;
+        if should_restore {
+          // Restoring to position has the same effect as `ShowWindow` with
+          // `SW_RESTORE`, but doesn't cause a flicker.
+          window.native().restore(Some(&rect))?;
         }
-        _ => {
-          swp_flags |= SWP_FRAMECHANGED;
 
-          window.native().set_window_pos(z_order, &rect, swp_flags)?;
+        let mut swp_flags = SWP_NOACTIVATE
+          | SWP_NOCOPYBITS
+          | SWP_NOSENDCHANGING
+          | SWP_ASYNCWINDOWPOS;
 
-          // When there's a mismatch between the DPI of the monitor and the
-          // window, the window might be sized incorrectly after the first
-          // move. If we set the position twice, inconsistencies after the
-          // first move are resolved.
-          if window.has_pending_dpi_adjustment() {
+        match &window.state() {
+          WindowState::Minimized => {
+            if !window.native().is_minimized()? {
+              window.native().minimize()?;
+            }
+          }
+          WindowState::Fullscreen(fullscreen)
+            if fullscreen.maximized
+              && window.native().has_window_style(WS_MAXIMIZEBOX) =>
+          {
+            if !window.native().is_maximized()? {
+              window.native().maximize()?;
+            }
+
             window.native().set_window_pos(z_order, &rect, swp_flags)?;
           }
-        }
-      }
+          _ => {
+            swp_flags |= SWP_FRAMECHANGED;
 
-      // Set visibility based on the hide method.
-      if config.value.general.hide_method == HideMethod::Cloak {
-        window.native().set_cloaked(!is_visible)?;
-      } else if is_visible {
-        window.native().show()?;
-      } else {
-        window.native().hide()?;
-      }
+            window.native().set_window_pos(z_order, &rect, swp_flags)?;
+
+            // When there's a mismatch between the DPI of the monitor and the
+            // window, the window might be sized incorrectly after the first
+            // move. If we set the position twice, inconsistencies after the
+            // first move are resolved.
+            if window.has_pending_dpi_adjustment() {
+              window.native().set_window_pos(z_order, &rect, swp_flags)?;
+            }
+          }
+        }
+
+        Ok(())
+      })();
+
+      // Set visibility based on the hide method. This runs even when
+      // positioning failed, so that a window which can't be moved is still
+      // hidden and shown with its workspace.
+      let visibility_res =
+        if config.value.general.hide_method == HideMethod::Cloak {
+          window.native().set_cloaked(!is_visible)
+        } else if is_visible {
+          window.native().show()
+        } else {
+          window.native().hide()
+        };
+
+      position_res?;
+      visibility_res?;
     }
   }
 
