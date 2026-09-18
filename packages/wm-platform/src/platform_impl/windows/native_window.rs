@@ -36,7 +36,7 @@ use windows::{
         SWP_SHOWWINDOW, SW_HIDE, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE,
         SW_SHOWNA, WINDOWPLACEMENT, WINDOW_EX_STYLE, WINDOW_STYLE,
         WM_CLOSE, WPF_ASYNCWINDOWPLACEMENT, WS_DLGFRAME, WS_EX_LAYERED,
-        WS_THICKFRAME,
+        WS_EX_TRANSPARENT, WS_THICKFRAME,
       },
     },
   },
@@ -464,6 +464,16 @@ impl NativeWindow {
 
   /// Implements [`NativeWindowWindowsExt::set_cloaked`].
   pub(crate) fn set_cloaked(&self, cloaked: bool) -> crate::Result<()> {
+    // A cloaked window is not drawn but is still under the cursor for hit
+    // testing, so Windows' "activate a window by hovering over it" hands it the
+    // focus and the WM jumps back to the workspace you have just left. Make it
+    // click-through while it is hidden.
+    if cloaked {
+      self.add_window_style_ex(WS_EX_TRANSPARENT);
+    } else {
+      self.remove_window_style_ex(WS_EX_TRANSPARENT);
+    }
+
     COM_INIT.with(|com_init| -> crate::Result<()> {
       com_init.borrow_mut().with_retry(|com| {
         let view_collection = com.application_view_collection()?;
@@ -526,6 +536,19 @@ impl NativeWindow {
         Ok(())
       })
     })
+  }
+
+  /// Implements [`NativeWindowWindowsExt::remove_window_style_ex`].
+  pub(crate) fn remove_window_style_ex(&self, style: WINDOW_EX_STYLE) {
+    let current_style =
+      unsafe { GetWindowLongPtrW(self.hwnd(), GWL_EXSTYLE) };
+
+    #[allow(clippy::cast_possible_wrap)]
+    if current_style & style.0 as isize != 0 {
+      let new_style = current_style & !(style.0 as isize);
+
+      unsafe { SetWindowLongPtrW(self.hwnd(), GWL_EXSTYLE, new_style) };
+    }
   }
 
   /// Implements [`NativeWindowWindowsExt::add_window_style_ex`].
