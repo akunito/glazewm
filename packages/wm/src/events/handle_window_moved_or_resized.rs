@@ -251,12 +251,20 @@ pub fn handle_window_moved_or_resized(
           let new_exceeds =
             new_frame.inset(1).contains_rect(&workspace_rect);
 
+          // A borderless game is often created a pixel or two larger than
+          // the monitor and then settles to exactly the monitor rect, which
+          // looks like an app leaving OS fullscreen. It isn't: the window
+          // still covers the whole monitor.
+          let new_covers_monitor = new_frame.contains_rect(
+            &nearest_monitor.native_properties().bounds.inset(1),
+          );
+
           // The window should no longer be fullscreen if the old frame
           // exceeded the workspace bounds (app was in OS fullscreen), but
           // the new frame no longer does. Configs with 0px outer gaps
           // always use the `should_fullscreen` check, since the old frame
           // will never exceed the workspace bounds.
-          if old_exceeded && !new_exceeds {
+          if old_exceeded && !new_exceeds && !new_covers_monitor {
             false
           } else {
             should_fullscreen
