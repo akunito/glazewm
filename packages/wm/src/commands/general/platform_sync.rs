@@ -308,6 +308,16 @@ fn redraw_containers(
         match (window.prev_state(), window.state()) {
           (Some(_), WindowState::Fullscreen(s)) if !s.maximized => true,
           (Some(WindowState::Fullscreen(_)), _) => true,
+          // Explorer forgets the fullscreen mark while the window is cloaked on
+          // a hidden workspace, and a window that was already fullscreen when it
+          // was managed has no previous state to trigger the check above. Mark
+          // it again whenever it comes back, or the taskbar stays over the game.
+          (None, WindowState::Fullscreen(s))
+            if !s.maximized
+              && window.display_state() == DisplayState::Showing =>
+          {
+            true
+          }
           _ => false,
         };
 
