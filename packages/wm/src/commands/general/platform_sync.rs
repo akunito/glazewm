@@ -310,8 +310,11 @@ fn redraw_containers(
       // (a state transition) never fired for a window that was already
       // fullscreen when it was managed, nor for a maximized one that covers the
       // monitor: the taskbar sat over the game after every workspace switch.
-      let covers_monitor = window
-        .monitor()
+      // Measured against the monitor the window is physically on, not the one
+      // its workspace belongs to: those differ while a window is being moved
+      // between monitors.
+      let covers_monitor = state
+        .nearest_monitor(&window.native())
         .map(|monitor| monitor.native_properties().bounds)
         .is_some_and(|bounds| {
           window
