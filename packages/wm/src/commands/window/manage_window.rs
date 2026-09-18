@@ -1,6 +1,8 @@
 use anyhow::Context;
 use tracing::info;
-use wm_common::{try_warn, WindowRuleEvent, WindowState, WmEvent};
+use wm_common::{
+  try_warn, FullscreenStateConfig, WindowRuleEvent, WindowState, WmEvent,
+};
 use wm_platform::{NativeWindow, RectDelta};
 
 use crate::{
@@ -274,6 +276,23 @@ fn window_state_to_create(
   let nearest_workspace = nearest_monitor
     .displayed_workspace()
     .context("No workspace.")?;
+
+  // A maximized window keeps its state. Initializing it as floating
+  // un-maximizes it and clamps it into the workspace gaps, and a game that
+  // starts maximized then takes that odd size as its fullscreen resolution
+  // (Age of Empires II DE: 3828x2072 on a 3840x2160 monitor, with the
+  // taskbar and its title bar left visible).
+  if native_properties.is_maximized {
+    return Ok(WindowState::Fullscreen(FullscreenStateConfig {
+      maximized: true,
+      ..config
+        .value
+        .window_behavior
+        .state_defaults
+        .fullscreen
+        .clone()
+    }));
+  }
 
   // Only initialize as fullscreen if the window *exceeds* the workspace
   // bounds (due to the 1px inset).
