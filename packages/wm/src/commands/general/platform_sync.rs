@@ -304,17 +304,28 @@ fn redraw_containers(
     // fullscreen without it needing to be marked as not fullscreen.
     #[cfg(target_os = "windows")]
     {
+      // A window that covers its whole monitor has to be marked fullscreen for
+      // Explorer, or the taskbar stays on top of it. Explorer forgets the mark
+      // while the window is cloaked on a hidden workspace, and the old check
+      // (a state transition) never fired for a window that was already
+      // fullscreen when it was managed, nor for a maximized one that covers the
+      // monitor: the taskbar sat over the game after every workspace switch.
+      let covers_monitor = window
+        .monitor()
+        .map(|monitor| monitor.native_properties().bounds)
+        .is_some_and(|bounds| {
+          window
+            .native_properties()
+            .frame
+            .contains_rect(&bounds.inset(1))
+        });
+
       let is_transitioning_fullscreen =
         match (window.prev_state(), window.state()) {
           (Some(_), WindowState::Fullscreen(s)) if !s.maximized => true,
           (Some(WindowState::Fullscreen(_)), _) => true,
-          // Explorer forgets the fullscreen mark while the window is cloaked on
-          // a hidden workspace, and a window that was already fullscreen when it
-          // was managed has no previous state to trigger the check above. Mark
-          // it again whenever it comes back, or the taskbar stays over the game.
-          (None, WindowState::Fullscreen(s))
-            if !s.maximized
-              && window.display_state() == DisplayState::Showing =>
+          (_, WindowState::Fullscreen(_))
+            if window.display_state() == DisplayState::Showing =>
           {
             true
           }
@@ -322,10 +333,10 @@ fn redraw_containers(
         };
 
       if is_transitioning_fullscreen {
-        if let Err(err) = window.native().mark_fullscreen(matches!(
-          window.state(),
-          WindowState::Fullscreen(_)
-        )) {
+        if let Err(err) = window.native().mark_fullscreen(
+          matches!(window.state(), WindowState::Fullscreen(_))
+            && covers_monitor,
+        ) {
           tracing::warn!("Failed to mark window as fullscreen: {}", err);
         }
       }
