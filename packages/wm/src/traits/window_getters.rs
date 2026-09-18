@@ -116,6 +116,11 @@ pub trait WindowGetters: CommonGetters {
       .monitor()
       .map(|monitor| monitor.native_properties().bounds);
 
+    tracing::debug!(
+      "should_fullscreen check: frame={frame:?} workspace_rect={workspace_rect:?} monitor_rect={monitor_rect:?} state={:?}",
+      self.state()
+    );
+
     let should_fullscreen = match self.state() {
       // Keep as fullscreen if the frame covers the workspace bounds.
       WindowState::Fullscreen(fullscreen) if !fullscreen.maximized => {
