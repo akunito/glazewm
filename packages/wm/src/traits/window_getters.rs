@@ -109,16 +109,27 @@ pub trait WindowGetters: CommonGetters {
       .frame
       .apply_delta(&self.border_delta().inverse(), None);
 
+    // A borderless-fullscreen window (a game) covers the monitor exactly,
+    // which with 0px outer gaps never *exceeds* the workspace, so it would
+    // never become fullscreen and the taskbar would stay above it.
+    let monitor_rect = workspace
+      .monitor()
+      .map(|monitor| monitor.native_properties().bounds);
+
     let should_fullscreen = match self.state() {
       // Keep as fullscreen if the frame covers the workspace bounds.
       WindowState::Fullscreen(fullscreen) if !fullscreen.maximized => {
         frame.contains_rect(&workspace_rect.inset(1))
       }
 
-      // Change to fullscreen if the frame *exceeds* the workspace bounds.
-      // NOTE: This is never possible with 0px outer gaps; the window has
-      // to be made fullscreen via the `set-fullscreen` command.
-      _ => frame.inset(1).contains_rect(&workspace_rect),
+      // Change to fullscreen if the frame *exceeds* the workspace bounds,
+      // or if it covers the whole monitor.
+      _ => {
+        frame.inset(1).contains_rect(&workspace_rect)
+          || monitor_rect.is_some_and(|monitor_rect| {
+            frame.contains_rect(&monitor_rect.inset(1))
+          })
+      }
     };
 
     Ok(should_fullscreen)
